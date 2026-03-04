@@ -1,29 +1,35 @@
-# LegalVision API Dependencies
+# ===== FastAPI API / Server =====
+fastapi
+uvicorn
+gunicorn
+python-multipart
 
-# FastAPI and server
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+# ===== Core Python utilities =====
+requests
+python-dotenv
+beautifulsoup4
 
-# Pydantic for data validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
+# ===== Document processing =====
+PyPDF2
+python-docx
 
-# Neo4j database
-neo4j==5.15.0
+# ===== NLP / LLM =====
+spacy
+langchain
+openai
 
-# OpenAI for LLM
-openai==1.12.0
+# ===== Knowledge Graph =====
+neo4j
 
-# Environment variables
-python-dotenv==1.0.0
+# ===== Hugging Face / LLM Training =====
+datasets
+huggingface_hub
+accelerate
 
-# CORS support (included in fastapi)
-# starlette
+# ===== Data validation / settings =====
+pydantic
+pydantic-settings
 
-# Optional: for testing
-pytest==7.4.4
-httpx==0.26.0
-
-# Optional: for production
-gunicorn==21.2.0
+# ===== Testing =====
+pytest
+httpx
