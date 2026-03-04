@@ -22,9 +22,9 @@ openai
 neo4j
 
 # ===== Hugging Face / LLM Training =====
-datasets
-huggingface_hub
-accelerate
+#datasets
+#huggingface_hub
+#accelerate
 
 # ===== Data validation / settings =====
 pydantic
