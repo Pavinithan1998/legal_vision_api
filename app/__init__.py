@@ -1,0 +1,1 @@
+"""LegalVision API Application."""
