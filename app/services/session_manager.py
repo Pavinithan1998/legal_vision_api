@@ -19,7 +19,7 @@ class SessionManager:
         self.sessions: Dict[str, Dict] = {}
         self.max_history = max_history
         self.session_timeout = timedelta(minutes=session_timeout_minutes)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # Use RLock for reentrant locking
     
     def _create_session(self, session_id: str) -> Dict:
         """Create a new session."""

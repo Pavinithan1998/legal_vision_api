@@ -3,13 +3,20 @@ LegalVision API - Sri Lankan Property Law GraphRAG System
 Main FastAPI Application Entry Point
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+import traceback
+import logging
 
 from app.core.config import settings
 from app.core.database import neo4j_driver
 from app.routers import query, deeds, legal, definitions, compliance
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -46,6 +53,26 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan
 )
+
+
+# Add global exception handler
+@app.middleware("http")
+async def error_handler_middleware(request: Request, call_next):
+    """Catch all exceptions and log them."""
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.error(f"Unhandled exception in {request.url.path}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Internal server error: {str(e)}",
+                "path": request.url.path
+            }
+        )
+
 
 # CORS middleware
 app.add_middleware(

@@ -6,6 +6,7 @@ Handles natural language queries with full reasoning pipeline
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import uuid
+import logging
 
 from app.models.schemas import QueryRequest, QueryResponse, StatsResponse
 from app.services.graph_service import graph_service
@@ -13,6 +14,7 @@ from app.services.llm_service import llm_service
 from app.services.session_manager import session_manager
 from app.utils.intent_detection import intent_detector
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -34,54 +36,67 @@ async def process_query(request: QueryRequest):
     - "Is this deed valid?" (follow-up)
     - "What is prescription in property law?"
     """
-    # Get or create session
-    session_id = request.session_id or str(uuid.uuid4())
-    context = session_manager.get_context(session_id)
+    try:
+        # Get or create session
+        session_id = request.session_id or str(uuid.uuid4())
+        logger.info(f"Processing query with session {session_id}")
+        
+        context = session_manager.get_context(session_id)
+        
+        # Detect intent
+        logger.info(f"Detecting intent for: {request.query[:50]}...")
+        intent, params, query_type = intent_detector.detect_intent(
+            request.query, 
+            context
+        )
+        logger.info(f"Detected intent: {intent.value}")
+        
+        # Execute graph query
+        logger.info(f"Executing graph query with params: {params}")
+        graph_data = graph_service.execute_intent(intent, params)
+        logger.info(f"Retrieved {len(graph_data)} records from graph")
+        
+        # Update session context
+        session_manager.update_context(session_id, intent.value, params, graph_data)
+        
+        # Generate response with LLM
+        logger.info("Generating LLM response...")
+        llm_response = llm_service.generate_response(
+            user_query=request.query,
+            graph_data=graph_data,
+            intent=intent.value,
+            query_type=query_type,
+            conversation_history=session_manager.get_history(session_id),
+            include_reasoning=request.include_reasoning
+        )
+        logger.info("LLM response generated successfully")
+        
+        # Add to history
+        session_manager.add_to_history(
+            session_id=session_id,
+            query=request.query,
+            intent=intent.value,
+            params=params,
+            results_count=len(graph_data),
+            response_summary=llm_response["answer"][:100] if llm_response["answer"] else None
+        )
+        
+        return QueryResponse(
+            query=request.query,
+            intent=intent.value,
+            query_type=query_type.value,
+            answer=llm_response["answer"],
+            reasoning_steps=llm_response.get("reasoning_steps"),
+            irac_analysis=llm_response.get("irac_analysis"),
+            sources=llm_response.get("sources", []),
+            related_statutes=llm_response.get("related_statutes", []),
+            confidence=llm_response.get("confidence", 0.5),
+            data={"results_count": len(graph_data), "session_id": session_id}
+        )
     
-    # Detect intent
-    intent, params, query_type = intent_detector.detect_intent(
-        request.query, 
-        context
-    )
-    
-    # Execute graph query
-    graph_data = graph_service.execute_intent(intent, params)
-    
-    # Update session context
-    session_manager.update_context(session_id, intent.value, params, graph_data)
-    
-    # Generate response with LLM
-    llm_response = llm_service.generate_response(
-        user_query=request.query,
-        graph_data=graph_data,
-        intent=intent.value,
-        query_type=query_type,
-        conversation_history=session_manager.get_history(session_id),
-        include_reasoning=request.include_reasoning
-    )
-    
-    # Add to history
-    session_manager.add_to_history(
-        session_id=session_id,
-        query=request.query,
-        intent=intent.value,
-        params=params,
-        results_count=len(graph_data),
-        response_summary=llm_response["answer"][:100] if llm_response["answer"] else None
-    )
-    
-    return QueryResponse(
-        query=request.query,
-        intent=intent.value,
-        query_type=query_type.value,
-        answer=llm_response["answer"],
-        reasoning_steps=llm_response.get("reasoning_steps"),
-        irac_analysis=llm_response.get("irac_analysis"),
-        sources=llm_response.get("sources", []),
-        related_statutes=llm_response.get("related_statutes", []),
-        confidence=llm_response.get("confidence", 0.5),
-        data={"results_count": len(graph_data), "session_id": session_id}
-    )
+    except Exception as e:
+        logger.error(f"Error processing query: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
 @router.get("/stats", response_model=StatsResponse)
