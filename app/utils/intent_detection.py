@@ -1,6 +1,8 @@
 """
 Intent Detection and NLP Utilities
 Handles query parsing, intent classification, and entity extraction
+
+UPDATED: Better recognition of cost, price, comparison, and transfer questions
 """
 
 import re
@@ -41,6 +43,13 @@ class Intent(str, Enum):
     
     # General
     GENERAL_SEARCH = "general_search"
+    
+    # NEW: Cost and price intents
+    CALCULATE_TRANSFER_COST = "calculate_transfer_cost"
+    COMPARE_DEED_TYPES = "compare_deed_types"
+    FIND_LAND_PRICE = "find_land_price"
+    FIND_STAMP_DUTY = "find_stamp_duty"
+    FIND_REGISTRY = "find_registry"
 
 
 class QueryType(str, Enum):
@@ -85,6 +94,20 @@ class IntentDetector:
             'mullaitivu', 'vavuniya', 'batticaloa', 'ampara', 'trincomalee',
             'kurunegala', 'puttalam', 'anuradhapura', 'polonnaruwa',
             'badulla', 'monaragala', 'ratnapura', 'kegalle'
+        ]
+        
+        # Known areas for price queries
+        self.known_areas = [
+            'athurugiriya', 'nugegoda', 'maharagama', 'rajagiriya', 'dehiwala',
+            'moratuwa', 'kelaniya', 'negombo', 'ja-ela', 'kadawatha', 'kiribathgoda',
+            'kolonnawa', 'homagama', 'kaduwela', 'malabe', 'battaramulla',
+            'pelawatte', 'thalawathugoda', 'kotte', 'nawala', 'boralesgamuwa',
+            'piliyandala', 'pannipitiya', 'kottawa', 'mount lavinia',
+            'peradeniya', 'katugastota', 'digana', 'kundasale',
+            'unawatuna', 'hikkaduwa', 'mirissa', 'weligama', 'tangalle',
+            'chilaw', 'kuliyapitiya', 'mawanella',
+            'bandarawela', 'haputale', 'ella',
+            'nallur', 'chavakachcheri'
         ]
         
         # Deed types
@@ -158,6 +181,55 @@ class IntentDetector:
         
         return None
     
+    def extract_area_name(self, query: str) -> Optional[str]:
+        """Extract area/location name from query."""
+        query_lower = query.lower()
+        
+        # Check for known areas first
+        for area in self.known_areas:
+            if area in query_lower:
+                return area.title()
+        
+        # Check for Colombo zones (Colombo 1-15)
+        colombo_match = re.search(r'colombo\s*(\d{1,2})', query_lower)
+        if colombo_match:
+            return f"Colombo {colombo_match.group(1)}"
+        
+        # Check for "in [Place]" pattern
+        match = re.search(r'\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', query)
+        if match:
+            place = match.group(1)
+            # Filter out common non-place words
+            if place.lower() not in ['sri', 'the', 'this', 'that', 'which', 'what']:
+                return place
+        
+        # Fall back to district
+        return self.extract_district(query)
+    
+    def extract_amount(self, query: str) -> Optional[float]:
+        """Extract monetary amount from query."""
+        query_lower = query.lower()
+        
+        # Pattern: 10 million, 10M, 10,000,000, Rs. 10000000
+        patterns = [
+            (r'(\d+(?:\.\d+)?)\s*(?:million|m\b)', 1000000),
+            (r'(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac)', 100000),
+            (r'(\d+(?:\.\d+)?)\s*(?:crore|cr)', 10000000),
+            (r'(?:rs\.?|lkr|rupees?)\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)', 1),
+            (r'(\d{1,3}(?:,\d{3})+)', 1),  # Comma-separated numbers like 10,000,000
+        ]
+        
+        for pattern, multiplier in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                amount_str = match.group(1).replace(',', '')
+                try:
+                    return float(amount_str) * multiplier
+                except ValueError:
+                    continue
+        
+        return None
+    
     def extract_deed_type(self, query: str) -> Optional[str]:
         """Extract deed type from query."""
         query_lower = query.lower()
@@ -191,6 +263,10 @@ class IntentDetector:
         """Classify query type for response formatting."""
         query_lower = query.lower()
         
+        # Comparison queries (check first)
+        if any(word in query_lower for word in ['difference', 'compare', 'versus', 'vs', 'between', 'better', 'which type', 'which deed']):
+            return QueryType.COMPARISON
+        
         # Compliance queries
         if any(word in query_lower for word in ['valid', 'comply', 'compliant', 'requirement', 'needed', 'missing', 'check']):
             return QueryType.COMPLIANCE
@@ -203,10 +279,6 @@ class IntentDetector:
         # Legal reasoning queries
         if any(word in query_lower for word in ['why', 'legal', 'law', 'statute', 'can i', 'should i', 'is it legal', 'allowed']):
             return QueryType.LEGAL_REASONING
-        
-        # Comparison queries
-        if any(word in query_lower for word in ['difference', 'compare', 'versus', 'vs', 'between']):
-            return QueryType.COMPARISON
         
         return QueryType.FACTUAL
     
@@ -227,6 +299,121 @@ class IntentDetector:
         context = context or {}
         
         # =================================================================
+        # PRIORITY STEP: Cost/Price/Transfer questions (check FIRST)
+        # =================================================================
+        
+        is_cost_question = any(phrase in query_lower for phrase in [
+            'cost', 'how much', 'price', 'stamp duty', 'fees', 'charges',
+            'pay', 'expense', 'budget', 'calculate', 'total', 'estimate',
+            'what will', 'will it cost', 'cost me'
+        ])
+        
+        is_transfer_question = any(phrase in query_lower for phrase in [
+            'transfer', 'give to', 'give my', 'to my son', 'to my daughter',
+            'to my wife', 'to my husband', 'to my child', 'to my parent',
+            'to my brother', 'to my sister', 'family', 'pass on', 'hand over',
+            'my land', 'my property'
+        ])
+        
+        is_comparison = any(phrase in query_lower for phrase in [
+            'compare', 'vs', 'versus', 'or', 'better', 'difference',
+            'which deed', 'what type', 'best deed', 'best way', 'which is'
+        ])
+        
+        is_land_price_question = any(phrase in query_lower for phrase in [
+            'land price', 'property price', 'per perch', 'price in',
+            'prices in', 'market value', 'market price', 'land value',
+            'how much is land', 'land cost'
+        ])
+        
+        # -----------------------------------------------------------------
+        # Cost calculation WITH comparison (gift vs sale)
+        # -----------------------------------------------------------------
+        if is_cost_question and is_comparison:
+            deed_type = self.extract_deed_type(query) or "sale_transfer"
+            area = self.extract_area_name(query)
+            amount = self.extract_amount(query)
+            
+            return Intent.COMPARE_DEED_TYPES, {
+                "deed_type": deed_type,
+                "area": area,
+                "amount": amount,
+                "comparison": True
+            }, QueryType.COMPARISON
+        
+        # -----------------------------------------------------------------
+        # Cost calculation for family transfer
+        # -----------------------------------------------------------------
+        if is_cost_question and is_transfer_question:
+            deed_type = self.extract_deed_type(query)
+            area = self.extract_area_name(query)
+            amount = self.extract_amount(query)
+            
+            # Default to gift for family transfers (better for user)
+            if not deed_type:
+                deed_type = "gift"
+            
+            return Intent.CALCULATE_TRANSFER_COST, {
+                "deed_type": deed_type,
+                "area": area or "Colombo",
+                "amount": amount,
+                "is_family_transfer": True
+            }, QueryType.FACTUAL
+        
+        # -----------------------------------------------------------------
+        # General cost question
+        # -----------------------------------------------------------------
+        if is_cost_question:
+            deed_type = self.extract_deed_type(query)
+            amount = self.extract_amount(query)
+            area = self.extract_area_name(query)
+            
+            return Intent.CALCULATE_TRANSFER_COST, {
+                "deed_type": deed_type or "sale_transfer",
+                "amount": amount,
+                "area": area
+            }, QueryType.FACTUAL
+        
+        # -----------------------------------------------------------------
+        # Stamp duty specific questions
+        # -----------------------------------------------------------------
+        if 'stamp duty' in query_lower:
+            deed_type = self.extract_deed_type(query)
+            amount = self.extract_amount(query)
+            
+            return Intent.FIND_STAMP_DUTY, {
+                "deed_type": deed_type or "sale_transfer",
+                "amount": amount
+            }, QueryType.FACTUAL
+        
+        # -----------------------------------------------------------------
+        # Land price questions
+        # -----------------------------------------------------------------
+        if is_land_price_question:
+            area = self.extract_area_name(query)
+            
+            return Intent.FIND_LAND_PRICE, {
+                "area_name": area or "Colombo"
+            }, QueryType.FACTUAL
+        
+        # -----------------------------------------------------------------
+        # Deed type comparison (without cost focus)
+        # -----------------------------------------------------------------
+        if is_comparison:
+            deed_type = self.extract_deed_type(query)
+            if deed_type or any(word in query_lower for word in ['gift', 'sale', 'deed']):
+                return Intent.COMPARE_DEED_TYPES, {
+                    "deed_type": deed_type or "sale_transfer"
+                }, QueryType.COMPARISON
+        
+        # -----------------------------------------------------------------
+        # Registry queries
+        # -----------------------------------------------------------------
+        if any(word in query_lower for word in ['registry', 'land registry', 'register office', 'registration office', 'where to register']):
+            district = self.extract_district(query)
+            return Intent.FIND_REGISTRY, {"district": district or "Colombo"}, QueryType.FACTUAL
+        
+        # =================================================================
         # STEP 1: Handle follow-up questions using context
         # =================================================================
         reference_words = ['this', 'that', 'it', 'its', 'the same', 'these', 'those', 'their']
@@ -240,6 +427,13 @@ class IntentDetector:
             # Parties
             if any(word in query_lower for word in ['party', 'parties', 'owner', 'vendor', 'vendee', 'who', 'involved']):
                 return Intent.FIND_DEED_PARTIES, {"code": context["deed_code"]}, query_type
+            
+            # Cost for this deed
+            if any(word in query_lower for word in ['cost', 'stamp duty', 'fees']):
+                return Intent.CALCULATE_TRANSFER_COST, {
+                    "deed_code": context["deed_code"],
+                    "deed_type": context.get("deed_type", "sale_transfer")
+                }, QueryType.FACTUAL
             
             # Details
             if any(word in query_lower for word in ['detail', 'more', 'about', 'tell', 'show', 'describe']):
@@ -288,6 +482,11 @@ class IntentDetector:
             if code:
                 return Intent.FIND_GOVERNING_LAW, {"code": code}, query_type
             
+            # Section-specific query
+            section_match = re.search(r'section\s*(\d+)', query_lower)
+            if section_match:
+                return Intent.FIND_SECTION, {"query": query, "section_num": section_match.group(1)}, query_type
+            
             # General statute search
             return Intent.FIND_STATUTE, {"query": query}, query_type
         
@@ -309,9 +508,9 @@ class IntentDetector:
             return Intent.FIND_RECENT_DEEDS, {"limit": 10}, query_type
         
         # =================================================================
-        # STEP 7: Amount/price queries
+        # STEP 7: Amount/price queries (deeds by amount)
         # =================================================================
-        if any(word in query_lower for word in ['expensive', 'costly', 'highest price', 'amount', 'price', 'value', 'consideration']):
+        if any(word in query_lower for word in ['expensive', 'costly', 'highest price', 'highest value']):
             return Intent.FIND_BY_AMOUNT, {"limit": 10}, query_type
         
         # =================================================================
@@ -366,7 +565,7 @@ class IntentDetector:
         # =================================================================
         # STEP 13: Property/lot search
         # =================================================================
-        if any(word in query_lower for word in ['lot', 'property', 'parcel', 'plan', 'plot']):
+        if any(word in query_lower for word in ['lot', 'parcel', 'plan']):
             lot_match = re.search(r'lot\s*([0-9A-Za-z]+)', query_lower)
             if lot_match:
                 return Intent.FIND_PROPERTY, {"lot": lot_match.group(1).upper()}, query_type

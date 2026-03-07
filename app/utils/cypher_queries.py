@@ -1,6 +1,8 @@
 """
 Cypher Query Repository
 All Neo4j Cypher queries in one place for easy maintenance
+
+UPDATED: Added queries for cost calculation, land prices, deed comparison, registries
 """
 
 from typing import Dict
@@ -225,6 +227,7 @@ class CypherQueries:
                req.requirements AS requirements,
                req.stamp_duty AS stamp_duty,
                req.registration_fee AS registration_fee,
+               req.time_limit AS time_limit,
                collect(DISTINCT s.name) AS governing_statutes
     """
     
@@ -353,6 +356,193 @@ class CypherQueries:
     """
     
     # =========================================================================
+    # NEW: COST CALCULATION QUERIES
+    # =========================================================================
+    
+    CALCULATE_TRANSFER_COST = """
+        MATCH (req:DeedRequirement)
+        WHERE toLower(req.deed_type) = toLower($deed_type) 
+           OR toLower(req.name) CONTAINS toLower($deed_type)
+        OPTIONAL MATCH (req)-[:GOVERNED_BY]->(s:Statute)
+        OPTIONAL MATCH (sec:Section)-[:PART_OF]->(s)
+        WHERE sec.importance = 'critical'
+        RETURN req.deed_type AS deed_type, req.name AS deed_name,
+               req.requirements AS requirements,
+               req.stamp_duty AS stamp_duty,
+               req.registration_fee AS registration_fee,
+               req.time_limit AS time_limit,
+               collect(DISTINCT s.name) AS governing_statutes,
+               collect(DISTINCT {section: sec.section_number, title: sec.title, content: sec.content}) AS key_sections
+        LIMIT 1
+    """
+    
+    COMPARE_DEED_TYPES = """
+        MATCH (req:DeedRequirement)
+        WHERE req.deed_type IN ['sale_transfer', 'gift']
+        OPTIONAL MATCH (req)-[:GOVERNED_BY]->(s:Statute)
+        OPTIONAL MATCH (sec:Section)-[:PART_OF]->(s)
+        WHERE sec.importance = 'critical'
+        RETURN req.deed_type AS deed_type, req.name AS deed_name,
+               req.requirements AS requirements,
+               req.stamp_duty AS stamp_duty,
+               req.registration_fee AS registration_fee,
+               req.time_limit AS time_limit,
+               collect(DISTINCT s.short_name) AS governing_laws,
+               collect(DISTINCT {section: sec.section_number, title: sec.title}) AS key_sections
+        ORDER BY req.deed_type
+    """
+    
+    GET_ALL_DEED_REQUIREMENTS = """
+        MATCH (req:DeedRequirement)
+        OPTIONAL MATCH (req)-[:GOVERNED_BY]->(s:Statute)
+        RETURN req.deed_type AS deed_type, req.name AS name,
+               req.requirements AS requirements,
+               req.stamp_duty AS stamp_duty,
+               req.registration_fee AS registration_fee,
+               req.time_limit AS time_limit,
+               collect(DISTINCT s.name) AS governing_statutes
+        ORDER BY req.deed_type
+    """
+    
+    # =========================================================================
+    # NEW: STAMP DUTY QUERIES
+    # =========================================================================
+    
+    FIND_STAMP_DUTY = """
+        MATCH (req:DeedRequirement)
+        WHERE toLower(req.deed_type) = toLower($deed_type)
+           OR toLower(req.name) CONTAINS toLower($deed_type)
+        OPTIONAL MATCH (sda:Statute)
+        WHERE sda.short_name = 'SDA' OR sda.name CONTAINS 'Stamp Duty'
+        OPTIONAL MATCH (sec:Section)-[:PART_OF]->(sda)
+        RETURN req.deed_type AS deed_type, req.name AS deed_name,
+               req.stamp_duty AS stamp_duty_rate,
+               req.registration_fee AS registration_fee,
+               req.time_limit AS time_limit,
+               sda.name AS stamp_duty_act,
+               sec.content AS stamp_duty_law
+        LIMIT 1
+    """
+    
+    GET_ALL_STAMP_DUTY_RATES = """
+        MATCH (req:DeedRequirement)
+        RETURN req.deed_type AS deed_type, req.name AS name,
+               req.stamp_duty AS stamp_duty,
+               req.registration_fee AS registration_fee
+        ORDER BY req.deed_type
+    """
+    
+    # =========================================================================
+    # NEW: LAND PRICE QUERIES
+    # =========================================================================
+    
+    FIND_LAND_PRICE = """
+        MATCH (a:Area)
+        WHERE toLower(a.name) CONTAINS toLower($area_name)
+           OR toLower(a.district) CONTAINS toLower($area_name)
+        OPTIONAL MATCH (a)-[:IN_DISTRICT]->(d:District)
+        OPTIONAL MATCH (d)-[:IN_PROVINCE]->(p:Province)
+        RETURN a.name AS area, a.avg_price_per_perch AS avg_price,
+               a.price_trend AS trend, d.name AS district, p.name AS province
+        ORDER BY a.avg_price_per_perch DESC
+        LIMIT 10
+    """
+    
+    FIND_LAND_PRICES_BY_DISTRICT = """
+        MATCH (d:District)
+        WHERE toLower(d.name) CONTAINS toLower($district)
+        OPTIONAL MATCH (a:Area)-[:IN_DISTRICT]->(d)
+        OPTIONAL MATCH (lp:LandPrice)-[:PRICE_IN]->(d)
+        OPTIONAL MATCH (d)-[:IN_PROVINCE]->(p:Province)
+        RETURN d.name AS district, p.name AS province,
+               collect(DISTINCT {
+                   area: a.name, 
+                   price: a.avg_price_per_perch, 
+                   trend: a.price_trend
+               }) AS areas,
+               collect(DISTINCT {
+                   zone: lp.zone, 
+                   min: lp.min_price, 
+                   max: lp.max_price, 
+                   avg: lp.avg_price
+               }) AS zone_prices
+        LIMIT 1
+    """
+    
+    COMPARE_LAND_PRICES = """
+        MATCH (a:Area)
+        WHERE a.name IN $areas OR a.district IN $areas
+        OPTIONAL MATCH (a)-[:IN_DISTRICT]->(d:District)
+        RETURN a.name AS area, d.name AS district,
+               a.avg_price_per_perch AS price, a.price_trend AS trend
+        ORDER BY a.avg_price_per_perch DESC
+    """
+    
+    # =========================================================================
+    # NEW: REGISTRY QUERIES
+    # =========================================================================
+    
+    FIND_REGISTRY = """
+        MATCH (r:RegistryOffice)
+        WHERE toLower(r.district) CONTAINS toLower($district)
+           OR toLower(r.name) CONTAINS toLower($district)
+        RETURN r.name AS registry_name, r.district AS district,
+               r.address AS address, r.phone AS phone
+        LIMIT 3
+    """
+    
+    GET_ALL_REGISTRIES = """
+        MATCH (r:RegistryOffice)
+        OPTIONAL MATCH (r)-[:SERVES]->(d:District)
+        RETURN r.name AS registry_name, r.district AS district,
+               r.address AS address, r.phone AS phone
+        ORDER BY r.district
+    """
+    
+    # =========================================================================
+    # NEW: ENHANCED SECTION QUERIES
+    # =========================================================================
+    
+    FIND_SECTION_BY_NUMBER = """
+        MATCH (sec:Section)
+        WHERE sec.section_number CONTAINS $section_num
+        OPTIONAL MATCH (sec)-[:PART_OF]->(s:Statute)
+        RETURN sec.section_number AS section_number, sec.title AS title,
+               sec.content AS content, sec.importance AS importance,
+               s.name AS statute_name, s.short_name AS statute_short_name,
+               s.year AS statute_year
+        LIMIT 5
+    """
+    
+    FIND_CRITICAL_SECTIONS = """
+        MATCH (sec:Section)
+        WHERE sec.importance = 'critical'
+        OPTIONAL MATCH (sec)-[:PART_OF]->(s:Statute)
+        RETURN sec.section_number AS section, sec.title AS title,
+               sec.content AS content, s.short_name AS statute,
+               s.name AS statute_name
+        ORDER BY s.year, sec.section_number
+    """
+    
+    GET_STATUTE_WITH_SECTIONS = """
+        MATCH (s:Statute)
+        WHERE toLower(s.name) CONTAINS toLower($statute_name)
+           OR toLower(s.short_name) = toLower($statute_name)
+        OPTIONAL MATCH (sec:Section)-[:PART_OF]->(s)
+        RETURN s.id AS statute_id, s.name AS statute_name, s.short_name AS short_name,
+               s.year AS year, s.description AS description,
+               s.key_provisions AS key_provisions,
+               s.applies_to AS applies_to,
+               collect({
+                   section_number: sec.section_number,
+                   title: sec.title,
+                   content: sec.content,
+                   importance: sec.importance
+               }) AS sections
+        LIMIT 1
+    """
+    
+    # =========================================================================
     # GENERAL SEARCH
     # =========================================================================
     
@@ -388,6 +578,15 @@ class CypherQueries:
             WHERE toLower(prin.name) CONTAINS toLower($query)
                OR toLower(prin.english) CONTAINS toLower($query)
             RETURN 'Legal Principle' AS type, prin.name AS name, null AS code, prin.english AS extra
+            UNION
+            MATCH (a:Area)
+            WHERE toLower(a.name) CONTAINS toLower($query)
+            RETURN 'Land Price' AS type, a.name AS name, toString(a.avg_price_per_perch) AS code, a.price_trend AS extra
+            UNION
+            MATCH (req:DeedRequirement)
+            WHERE toLower(req.deed_type) CONTAINS toLower($query)
+               OR toLower(req.name) CONTAINS toLower($query)
+            RETURN 'Deed Requirement' AS type, req.name AS name, req.deed_type AS code, req.stamp_duty AS extra
         }
         RETURN type, name, code, extra
         LIMIT 15
