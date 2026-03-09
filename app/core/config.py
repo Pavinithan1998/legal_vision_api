@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.3
     OPENAI_MAX_TOKENS: int = 1500
     
+    # LegalVision Settings - ADD THESE TWO LINES
+    LEGALVISION_ENDPOINT_URL: str = ""
+    HF_TOKEN: str = ""
+    
     # Application Settings
     MAX_RESULTS: int = 10
     CONVERSATION_HISTORY_SIZE: int = 10
@@ -36,6 +40,5 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
-
 
 settings = Settings()
