@@ -2,7 +2,9 @@
 Cypher Query Repository
 All Neo4j Cypher queries in one place for easy maintenance
 
-UPDATED: Added queries for cost calculation, land prices, deed comparison, registries
+UPDATED: Fixed GET_STATS (chained WITH was zeroing counts),
+         Fixed FIND_DEED_DETAILS (LIMIT before collect cut party list),
+         Added GET /graph/data query for Knowledge Graph visualisation
 """
 
 from typing import Dict
@@ -10,11 +12,11 @@ from typing import Dict
 
 class CypherQueries:
     """Repository of all Cypher queries."""
-    
+
     # =========================================================================
     # DEED QUERIES
     # =========================================================================
-    
+
     FIND_DEED_DETAILS = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -27,19 +29,33 @@ class CypherQueries:
         OPTIONAL MATCH (i)-[:REFERS_TO_PRIOR]->(pd:PriorDeed)
         OPTIONAL MATCH (i)-[:GOVERNED_BY]->(st:Statute)
         OPTIONAL MATCH (i)-[:MUST_COMPLY_WITH]->(req:DeedRequirement)
-        RETURN i.code_number AS deed_code, i.type AS deed_type, i.date AS date,
-               i.consideration_lkr AS amount, d.name AS district, pv.name AS province,
-               ro.name AS registry, pl.plan_no AS plan_no, pl.plan_date AS plan_date,
-               pp.lot AS lot, pp.extent AS extent, pp.assessment_no AS assessment,
-               pp.boundary_north AS north, pp.boundary_south AS south,
-               pp.boundary_east AS east, pp.boundary_west AS west,
-               pd.reference AS prior_deed,
-               collect(DISTINCT {name: p.name, role: r.role}) AS parties,
-               collect(DISTINCT st.name) AS governing_statutes,
-               req.requirements AS requirements
+        WITH i, pp, pl, d, pv, ro, pd, req,
+             collect(DISTINCT {name: p.name, role: r.role}) AS parties,
+             collect(DISTINCT st.name) AS governing_statutes
+        RETURN
+            i.code_number           AS deed_code,
+            i.type                  AS deed_type,
+            i.date                  AS date,
+            i.consideration_lkr     AS amount,
+            d.name                  AS district,
+            pv.name                 AS province,
+            ro.name                 AS registry,
+            pl.plan_no              AS plan_no,
+            pl.plan_date            AS plan_date,
+            pp.lot                  AS lot,
+            pp.extent               AS extent,
+            pp.assessment_no        AS assessment,
+            pp.boundary_north       AS north,
+            pp.boundary_south       AS south,
+            pp.boundary_east        AS east,
+            pp.boundary_west        AS west,
+            pd.reference            AS prior_deed,
+            parties,
+            governing_statutes,
+            req.requirements        AS requirements
         LIMIT 1
     """
-    
+
     FIND_DEED_PARTIES = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -49,7 +65,7 @@ class CypherQueries:
                p.name AS person_name, r.role AS role, n.number AS nic
         ORDER BY r.role
     """
-    
+
     FIND_BOUNDARIES = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -60,13 +76,13 @@ class CypherQueries:
                pp.extent AS extent
         LIMIT 1
     """
-    
+
     FIND_BY_BOUNDARY = """
         MATCH (pp:PropertyParcel)
         WHERE toLower(pp.boundary_north) CONTAINS toLower($name)
            OR toLower(pp.boundary_south) CONTAINS toLower($name)
-           OR toLower(pp.boundary_east) CONTAINS toLower($name)
-           OR toLower(pp.boundary_west) CONTAINS toLower($name)
+           OR toLower(pp.boundary_east)  CONTAINS toLower($name)
+           OR toLower(pp.boundary_west)  CONTAINS toLower($name)
         OPTIONAL MATCH (i:Instrument)-[:CONVEYS]->(pp)
         OPTIONAL MATCH (i)-[:IN_DISTRICT]->(d:District)
         OPTIONAL MATCH (p:Person)-[r:HAS_ROLE]->(i)
@@ -78,7 +94,7 @@ class CypherQueries:
                collect(DISTINCT {name: p.name, role: r.role}) AS parties
         LIMIT 10
     """
-    
+
     FIND_OWNERSHIP_CHAIN = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -91,10 +107,10 @@ class CypherQueries:
                pd.reference AS prior_reference,
                prior.code_number AS prior_deed_code, prior.date AS prior_date,
                pp.lot AS lot,
-               collect(DISTINCT {name: p.name, role: r.role}) AS current_parties,
+               collect(DISTINCT {name: p.name,   role: r.role})  AS current_parties,
                collect(DISTINCT {name: pp2.name, role: r2.role}) AS prior_parties
     """
-    
+
     FIND_PERSON_DEEDS = """
         MATCH (p:Person)-[r:HAS_ROLE]->(i:Instrument)
         WHERE toLower(p.name) CONTAINS toLower($name)
@@ -108,7 +124,7 @@ class CypherQueries:
         ORDER BY i.date DESC
         LIMIT $limit
     """
-    
+
     FIND_DISTRICT_DEEDS = """
         MATCH (i:Instrument)-[:IN_DISTRICT]->(d:District)
         WHERE toLower(d.name) CONTAINS toLower($district)
@@ -121,7 +137,7 @@ class CypherQueries:
         ORDER BY i.date DESC
         LIMIT $limit
     """
-    
+
     FIND_BY_TYPE = """
         MATCH (i:Instrument)
         WHERE toLower(i.type) CONTAINS toLower($deed_type)
@@ -137,7 +153,7 @@ class CypherQueries:
         ORDER BY i.date DESC
         LIMIT $limit
     """
-    
+
     FIND_PROPERTY = """
         MATCH (pp:PropertyParcel)
         WHERE pp.lot CONTAINS $lot OR pp.assessment_no CONTAINS $lot
@@ -154,7 +170,7 @@ class CypherQueries:
                collect(DISTINCT {name: p.name, role: r.role}) AS parties
         LIMIT 5
     """
-    
+
     FIND_RECENT_DEEDS = """
         MATCH (i:Instrument)
         WHERE i.date IS NOT NULL
@@ -167,7 +183,7 @@ class CypherQueries:
         ORDER BY i.date DESC
         LIMIT $limit
     """
-    
+
     FIND_BY_AMOUNT = """
         MATCH (i:Instrument)
         WHERE i.consideration_lkr IS NOT NULL AND i.consideration_lkr > 0
@@ -180,11 +196,32 @@ class CypherQueries:
         ORDER BY i.consideration_lkr DESC
         LIMIT $limit
     """
-    
+
     # =========================================================================
-    # LEGAL/STATUTE QUERIES
+    # KNOWLEDGE GRAPH VISUALISATION
     # =========================================================================
-    
+
+    GET_GRAPH_DATA = """
+        MATCH (i:Instrument)
+        WITH i LIMIT $limit
+        OPTIONAL MATCH (p:Person)-[pr:HAS_ROLE]->(i)
+        OPTIONAL MATCH (i)-[:CONVEYS]->(pp:PropertyParcel)
+        OPTIONAL MATCH (i)-[:IN_DISTRICT]->(d:District)
+        OPTIONAL MATCH (i)-[:DERIVES_FROM]->(prev:Instrument)
+        RETURN
+            i.code_number            AS deed_code,
+            i.type                   AS deed_type,
+            i.date                   AS date,
+            d.name                   AS district,
+            pp.lot                   AS lot,
+            prev.code_number         AS prior_deed_code,
+            collect(DISTINCT {name: p.name, role: pr.role}) AS persons
+    """
+
+    # =========================================================================
+    # LEGAL / STATUTE QUERIES
+    # =========================================================================
+
     FIND_STATUTE = """
         MATCH (s:Statute)
         WHERE toLower(s.name) CONTAINS toLower($query)
@@ -199,7 +236,7 @@ class CypherQueries:
                collect(DISTINCT {section: sec.section_number, title: sec.title, content: sec.content}) AS sections
         LIMIT 5
     """
-    
+
     FIND_GOVERNING_LAW = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -209,7 +246,7 @@ class CypherQueries:
         WHERE sec.importance = 'critical'
         RETURN i.code_number AS deed_code, i.type AS deed_type,
                collect(DISTINCT {
-                   name: s.name, 
+                   name: s.name,
                    short_name: s.short_name,
                    description: s.description,
                    key_provisions: s.key_provisions
@@ -218,7 +255,7 @@ class CypherQueries:
                req.stamp_duty AS stamp_duty,
                collect(DISTINCT {section: sec.section_number, title: sec.title, content: sec.content}) AS critical_sections
     """
-    
+
     FIND_DEED_REQUIREMENTS = """
         MATCH (req:DeedRequirement)
         WHERE toLower(req.deed_type) CONTAINS toLower($deed_type)
@@ -230,7 +267,7 @@ class CypherQueries:
                req.time_limit AS time_limit,
                collect(DISTINCT s.name) AS governing_statutes
     """
-    
+
     FIND_STATUTES_FOR_DEED_TYPE = """
         MATCH (s:Statute)
         WHERE $deed_type IN s.applies_to
@@ -243,7 +280,7 @@ class CypherQueries:
                collect(DISTINCT {section: sec.section_number, title: sec.title}) AS critical_sections
         ORDER BY s.year
     """
-    
+
     FIND_SECTION = """
         MATCH (sec:Section)-[:PART_OF]->(s:Statute)
         WHERE toLower(sec.title) CONTAINS toLower($query)
@@ -254,7 +291,7 @@ class CypherQueries:
                s.name AS statute_name, s.short_name AS short_name
         LIMIT 5
     """
-    
+
     FIND_ALL_STATUTES = """
         MATCH (s:Statute)
         OPTIONAL MATCH (sec:Section)-[:PART_OF]->(s)
@@ -265,28 +302,28 @@ class CypherQueries:
                count(sec) AS section_count
         ORDER BY s.year
     """
-    
+
     # =========================================================================
     # DEFINITION QUERIES
     # =========================================================================
-    
+
     FIND_DEFINITION = """
         MATCH (d:LegalDefinition)
         WHERE toLower(d.term) CONTAINS toLower($term)
         RETURN d.term AS term, d.definition AS definition, d.source AS source
         LIMIT 5
     """
-    
+
     FIND_ALL_DEFINITIONS = """
         MATCH (d:LegalDefinition)
         RETURN d.term AS term, d.definition AS definition, d.source AS source
         ORDER BY d.term
     """
-    
+
     # =========================================================================
     # LEGAL PRINCIPLE QUERIES
     # =========================================================================
-    
+
     FIND_PRINCIPLE = """
         MATCH (p:LegalPrinciple)
         WHERE toLower(p.name) CONTAINS toLower($query)
@@ -296,18 +333,18 @@ class CypherQueries:
                p.description AS description, p.application AS application
         LIMIT 5
     """
-    
+
     FIND_ALL_PRINCIPLES = """
         MATCH (p:LegalPrinciple)
         RETURN p.name AS principle_name, p.english AS english_meaning,
                p.description AS description, p.application AS application
         ORDER BY p.name
     """
-    
+
     # =========================================================================
     # COMPLIANCE QUERIES
     # =========================================================================
-    
+
     CHECK_DEED_COMPLIANCE = """
         MATCH (i:Instrument)
         WHERE i.code_number CONTAINS $code OR i.id CONTAINS $code
@@ -327,41 +364,52 @@ class CypherQueries:
                ro.name AS registry,
                collect(DISTINCT {name: p.name, role: r.role}) AS parties
     """
-    
+
     # =========================================================================
-    # STATISTICS
+    # STATISTICS  — fixed: replaced chained WITH pattern that zeroed all counts
     # =========================================================================
-    
+
     GET_STATS = """
         MATCH (i:Instrument)
-        WITH count(i) AS total_deeds
-        OPTIONAL MATCH (p:Person)
-        WITH total_deeds, count(DISTINCT p) AS total_persons
-        OPTIONAL MATCH (pp:PropertyParcel)
-        WITH total_deeds, total_persons, count(pp) AS total_parcels
-        OPTIONAL MATCH (d:District)
-        WITH total_deeds, total_persons, total_parcels, count(DISTINCT d) AS total_districts
-        OPTIONAL MATCH (s:Statute)
-        WITH total_deeds, total_persons, total_parcels, total_districts, count(s) AS total_statutes
-        OPTIONAL MATCH (def:LegalDefinition)
-        WITH total_deeds, total_persons, total_parcels, total_districts, total_statutes, count(def) AS total_definitions
-        OPTIONAL MATCH (i2:Instrument)
-        RETURN total_deeds, total_persons, total_parcels, total_districts,
-               total_statutes, total_definitions,
-               count(CASE WHEN i2.type = 'sale_transfer' THEN 1 END) AS sales,
-               count(CASE WHEN i2.type = 'gift' THEN 1 END) AS gifts,
-               count(CASE WHEN i2.type = 'will' THEN 1 END) AS wills,
-               count(CASE WHEN i2.type = 'lease' THEN 1 END) AS leases,
-               count(CASE WHEN i2.type = 'mortgage' THEN 1 END) AS mortgages
+        WITH
+            count(i) AS total_deeds,
+            count(CASE WHEN i.type = 'sale_transfer' THEN 1 END) AS sales,
+            count(CASE WHEN i.type = 'gift'          THEN 1 END) AS gifts,
+            count(CASE WHEN i.type = 'will'          THEN 1 END) AS wills,
+            count(CASE WHEN i.type = 'lease'         THEN 1 END) AS leases,
+            count(CASE WHEN i.type = 'mortgage'      THEN 1 END) AS mortgages
+        CALL {
+            MATCH (p:Person)
+            RETURN count(p) AS total_persons
+        }
+        CALL {
+            MATCH (pp:PropertyParcel)
+            RETURN count(pp) AS total_parcels
+        }
+        CALL {
+            MATCH (d:District)
+            RETURN count(d) AS total_districts
+        }
+        CALL {
+            MATCH (s:Statute)
+            RETURN count(s) AS total_statutes
+        }
+        CALL {
+            MATCH (def:LegalDefinition)
+            RETURN count(def) AS total_definitions
+        }
+        RETURN total_deeds, total_persons, total_parcels,
+               total_districts, total_statutes, total_definitions,
+               sales, gifts, wills, leases, mortgages
     """
-    
+
     # =========================================================================
-    # NEW: COST CALCULATION QUERIES
+    # COST CALCULATION QUERIES
     # =========================================================================
-    
+
     CALCULATE_TRANSFER_COST = """
         MATCH (req:DeedRequirement)
-        WHERE toLower(req.deed_type) = toLower($deed_type) 
+        WHERE toLower(req.deed_type) = toLower($deed_type)
            OR toLower(req.name) CONTAINS toLower($deed_type)
         OPTIONAL MATCH (req)-[:GOVERNED_BY]->(s:Statute)
         OPTIONAL MATCH (sec:Section)-[:PART_OF]->(s)
@@ -375,7 +423,7 @@ class CypherQueries:
                collect(DISTINCT {section: sec.section_number, title: sec.title, content: sec.content}) AS key_sections
         LIMIT 1
     """
-    
+
     COMPARE_DEED_TYPES = """
         MATCH (req:DeedRequirement)
         WHERE req.deed_type IN ['sale_transfer', 'gift']
@@ -391,7 +439,7 @@ class CypherQueries:
                collect(DISTINCT {section: sec.section_number, title: sec.title}) AS key_sections
         ORDER BY req.deed_type
     """
-    
+
     GET_ALL_DEED_REQUIREMENTS = """
         MATCH (req:DeedRequirement)
         OPTIONAL MATCH (req)-[:GOVERNED_BY]->(s:Statute)
@@ -403,11 +451,11 @@ class CypherQueries:
                collect(DISTINCT s.name) AS governing_statutes
         ORDER BY req.deed_type
     """
-    
+
     # =========================================================================
-    # NEW: STAMP DUTY QUERIES
+    # STAMP DUTY QUERIES
     # =========================================================================
-    
+
     FIND_STAMP_DUTY = """
         MATCH (req:DeedRequirement)
         WHERE toLower(req.deed_type) = toLower($deed_type)
@@ -423,7 +471,7 @@ class CypherQueries:
                sec.content AS stamp_duty_law
         LIMIT 1
     """
-    
+
     GET_ALL_STAMP_DUTY_RATES = """
         MATCH (req:DeedRequirement)
         RETURN req.deed_type AS deed_type, req.name AS name,
@@ -431,11 +479,11 @@ class CypherQueries:
                req.registration_fee AS registration_fee
         ORDER BY req.deed_type
     """
-    
+
     # =========================================================================
-    # NEW: LAND PRICE QUERIES
+    # LAND PRICE QUERIES
     # =========================================================================
-    
+
     FIND_LAND_PRICE = """
         MATCH (a:Area)
         WHERE toLower(a.name) CONTAINS toLower($area_name)
@@ -447,7 +495,7 @@ class CypherQueries:
         ORDER BY a.avg_price_per_perch DESC
         LIMIT 10
     """
-    
+
     FIND_LAND_PRICES_BY_DISTRICT = """
         MATCH (d:District)
         WHERE toLower(d.name) CONTAINS toLower($district)
@@ -456,19 +504,19 @@ class CypherQueries:
         OPTIONAL MATCH (d)-[:IN_PROVINCE]->(p:Province)
         RETURN d.name AS district, p.name AS province,
                collect(DISTINCT {
-                   area: a.name, 
-                   price: a.avg_price_per_perch, 
+                   area: a.name,
+                   price: a.avg_price_per_perch,
                    trend: a.price_trend
                }) AS areas,
                collect(DISTINCT {
-                   zone: lp.zone, 
-                   min: lp.min_price, 
-                   max: lp.max_price, 
+                   zone: lp.zone,
+                   min: lp.min_price,
+                   max: lp.max_price,
                    avg: lp.avg_price
                }) AS zone_prices
         LIMIT 1
     """
-    
+
     COMPARE_LAND_PRICES = """
         MATCH (a:Area)
         WHERE a.name IN $areas OR a.district IN $areas
@@ -477,11 +525,11 @@ class CypherQueries:
                a.avg_price_per_perch AS price, a.price_trend AS trend
         ORDER BY a.avg_price_per_perch DESC
     """
-    
+
     # =========================================================================
-    # NEW: REGISTRY QUERIES
+    # REGISTRY QUERIES
     # =========================================================================
-    
+
     FIND_REGISTRY = """
         MATCH (r:RegistryOffice)
         WHERE toLower(r.district) CONTAINS toLower($district)
@@ -490,7 +538,7 @@ class CypherQueries:
                r.address AS address, r.phone AS phone
         LIMIT 3
     """
-    
+
     GET_ALL_REGISTRIES = """
         MATCH (r:RegistryOffice)
         OPTIONAL MATCH (r)-[:SERVES]->(d:District)
@@ -498,11 +546,11 @@ class CypherQueries:
                r.address AS address, r.phone AS phone
         ORDER BY r.district
     """
-    
+
     # =========================================================================
-    # NEW: ENHANCED SECTION QUERIES
+    # ENHANCED SECTION QUERIES
     # =========================================================================
-    
+
     FIND_SECTION_BY_NUMBER = """
         MATCH (sec:Section)
         WHERE sec.section_number CONTAINS $section_num
@@ -513,7 +561,7 @@ class CypherQueries:
                s.year AS statute_year
         LIMIT 5
     """
-    
+
     FIND_CRITICAL_SECTIONS = """
         MATCH (sec:Section)
         WHERE sec.importance = 'critical'
@@ -523,7 +571,7 @@ class CypherQueries:
                s.name AS statute_name
         ORDER BY s.year, sec.section_number
     """
-    
+
     GET_STATUTE_WITH_SECTIONS = """
         MATCH (s:Statute)
         WHERE toLower(s.name) CONTAINS toLower($statute_name)
@@ -541,11 +589,11 @@ class CypherQueries:
                }) AS sections
         LIMIT 1
     """
-    
+
     # =========================================================================
     # GENERAL SEARCH
     # =========================================================================
-    
+
     GENERAL_SEARCH = """
         CALL {
             MATCH (p:Person)
