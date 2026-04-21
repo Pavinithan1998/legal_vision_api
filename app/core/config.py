@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Application Settings
     MAX_RESULTS: int = 10
     CONVERSATION_HISTORY_SIZE: int = 10
+
+    # Spacy model
+    SPACY_MODEL_PATH: str = os.getenv("SPACY_MODEL_PATH", "models/deed_ner_model")
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
     
     class Config:
         env_file = ".env"

@@ -1,0 +1,129 @@
+{
+  "timestamp": "2026-03-01T15:09:55.849484",
+  "test_size": 154,
+  "overall": {
+    "precision": 0.9918800749531543,
+    "recall": 0.9987421383647799,
+    "f1_score": 0.9952992792228142
+  },
+  "per_entity": {
+    "DEED_TYPE": {
+      "precision": 0.9960629921259843,
+      "recall": 1.0,
+      "f1_score": 0.9980276134122288
+    },
+    "PARTY_VENDOR": {
+      "precision": 0.9595959595959596,
+      "recall": 0.9895833333333334,
+      "f1_score": 0.9743589743589745
+    },
+    "REGISTRATION_NUMBER": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "BOUNDARY_NORTH": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "BOUNDARY_SOUTH": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PROPERTY_ADDRESS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "NIC": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "DATE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "AMOUNT": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PARTY_WITNESS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "DISTRICT": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PARTY_NOTARY": {
+      "precision": 0.9782608695652174,
+      "recall": 1.0,
+      "f1_score": 0.989010989010989
+    },
+    "PROPERTY_LOT": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PROPERTY_PLAN": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PROVINCE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "BOUNDARY_EAST": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "AREA": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "PARTY_VENDEE": {
+      "precision": 0.8108108108108109,
+      "recall": 0.967741935483871,
+      "f1_score": 0.8823529411764706
+    },
+    "GRAMA_NILADHARI": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "BOUNDARY_WEST": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    },
+    "REGISTRY_OFFICE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0
+    }
+  },
+  "confusion_analysis": {
+    "true_positives": 1588,
+    "false_positives": 145,
+    "false_negatives": 281,
+    "accuracy": 0.788480635551142
+  },
+  "training_info": {
+    "iterations": 50,
+    "final_loss": 181.2406005859375,
+    "min_loss": 157.1924285888672,
+    "max_loss": 37838.82421875,
+    "loss_reduction": 37657.58203125
+  }
+}

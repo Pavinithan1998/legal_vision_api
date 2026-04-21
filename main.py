@@ -12,7 +12,7 @@ import logging
 
 from app.core.config import settings
 from app.core.database import neo4j_driver
-from app.routers import query, deeds, legal, definitions, compliance
+from app.routers import query, deeds, legal, definitions, compliance, upload  
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +89,7 @@ app.include_router(deeds.router, prefix="/api/v1/deeds", tags=["Deeds"])
 app.include_router(legal.router, prefix="/api/v1/legal", tags=["Legal"])
 app.include_router(definitions.router, prefix="/api/v1/definitions", tags=["Definitions"])
 app.include_router(compliance.router, prefix="/api/v1/compliance", tags=["Compliance"])
+app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
 
 
 @app.get("/", tags=["Health"])
