@@ -128,18 +128,28 @@ class IntentDetector:
         return result
     
     def extract_deed_code(self, query: str) -> Optional[str]:
-        """Extract deed code from query."""
+        """
+        Extract deed code from query.
+        Patterns are ordered from most-specific to least-specific so that
+        codes like 'M 26028/77' or 'A 1100/188' match before bare numbers.
+        Whitespace inside the code is normalised to a single space.
+        """
         patterns = [
-            r'([A-Z]\s*\d+/\d+)',   # A 1100/188
-            r'([A-Z]\s*\d+-\d+)',    # A 1100-188
-            r'(\d+/\d+)',            # 1100/188
-            r'([A-Z]\s*\d{3,})',     # A 1100
-            r'DEED[_\s]*(\d+)',      # DEED_001
+            r'\b([A-Za-z]\s*\d{2,}\s*/\s*\d{1,})\b',   # M 26028/77, A 1100/188
+            r'\b([A-Za-z]\s*\d{2,}\s*-\s*\d{1,})\b',   # M 26028-77, A 1100-188
+            r'\b(\d{2,}\s*/\s*\d{1,})\b',              # 1100/188 (no letter prefix)
+            r'\bDEED[_\s-]*(\d+)\b',                   # DEED_001, DEED-001
+            r'\b([A-Za-z]\s*\d{3,})\b',                # A 1100 (fallback, letter + 3+ digits)
         ]
         for pattern in patterns:
             match = re.search(pattern, query, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                # Normalise: collapse internal whitespace and uppercase the leading letter
+                code = re.sub(r'\s+', ' ', match.group(1).strip())
+                # Standardise letter prefix to uppercase
+                if code and code[0].isalpha():
+                    code = code[0].upper() + code[1:]
+                return code
         return None
     
     def extract_person_name(self, query: str) -> Optional[str]:
@@ -412,6 +422,32 @@ class IntentDetector:
         if any(word in query_lower for word in ['registry', 'land registry', 'register office', 'registration office', 'where to register']):
             district = self.extract_district(query)
             return Intent.FIND_REGISTRY, {"district": district or "Colombo"}, QueryType.FACTUAL
+        
+        # =================================================================
+        # PRIORITY: Deed code routing
+        # If a deed code is present in the query, route immediately based on
+        # accompanying keywords. This prevents the person-name extractor or
+        # other steps from hijacking queries like "tell about M 26028/77".
+        # =================================================================
+        code = self.extract_deed_code(query)
+        if code:
+            # Compliance / validity
+            if any(word in query_lower for word in ['comply', 'compliant', 'valid', 'requirement', 'check']):
+                return Intent.CHECK_COMPLIANCE, {"code": code}, query_type
+            # Boundaries
+            if any(word in query_lower for word in ['boundary', 'boundaries', 'border']):
+                return Intent.FIND_BOUNDARIES, {"code": code}, query_type
+            # Parties / who
+            if any(word in query_lower for word in ['party', 'parties', 'who', 'vendor', 'vendee', 'donor', 'donee', 'owner', 'notary', 'involved']):
+                return Intent.FIND_DEED_PARTIES, {"code": code}, query_type
+            # Ownership chain / history
+            if any(word in query_lower for word in ['history', 'chain', 'previous', 'prior', 'before']):
+                return Intent.FIND_OWNERSHIP_CHAIN, {"code": code}, query_type
+            # Governing law / statute
+            if any(word in query_lower for word in ['statute', 'ordinance', 'govern', 'governing', 'legal basis']):
+                return Intent.FIND_GOVERNING_LAW, {"code": code}, query_type
+            # Default: full deed details
+            return Intent.FIND_DEED_DETAILS, {"code": code}, query_type
         
         # =================================================================
         # STEP 1: Handle follow-up questions using context
