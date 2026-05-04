@@ -28,9 +28,9 @@ from neo4j import GraphDatabase
 
 # Configuration
 JSON_DIR = pathlib.Path("./deeds/processed_final")  
-NEO4J_URI="neo4j+s://9767182a.databases.neo4j.io"
-NEO4J_USER="9767182a"
-NEO4J_PASS="eoyduAgumvZzn2FVMnGNLAvErder8zKZSTcKT8nxUuk"
+NEO4J_URI="neo4j+s://e5fc1127.databases.neo4j.io"
+NEO4J_USER="e5fc1127"
+NEO4J_PASS="0Jl3GNlDOzLHBkKo4bKszb0QlsK_H3kBkioPK323dzM"
 
 
 # =============================================================================
