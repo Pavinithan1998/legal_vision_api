@@ -27,10 +27,10 @@ load_dotenv()
 from neo4j import GraphDatabase
 
 # Configuration
-JSON_DIR = pathlib.Path("./deeds/processed_final")
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USER = os.getenv("NEO4J_USER")
-NEO4J_PASS = os.getenv("NEO4J_PASS")
+JSON_DIR = pathlib.Path("./deeds/processed_final")  
+NEO4J_URI="neo4j+s://9767182a.databases.neo4j.io"
+NEO4J_USER="9767182a"
+NEO4J_PASS="eoyduAgumvZzn2FVMnGNLAvErder8zKZSTcKT8nxUuk"
 
 
 # =============================================================================
